@@ -20,6 +20,7 @@ const (
 	img
 	vid
 	gif
+	search
 	nan
 )
 
@@ -50,42 +51,17 @@ func main() {
 	b.Handle(tele.OnQuery, func(c tele.Context) error {
 		format := checkType(c, logger)
 		switch format {
+		case search:
+			results := searchQuery(c.Query().Text, logger)
+			logger.Printf("handling %s \n", c.Query().Text)
+			c.Answer(&tele.QueryResponse{
+				Results:    results,
+				IsPersonal: true,
+				CacheTime:  1,
+			})
 		case def:
 			logger.Printf("handling %s \n", "default")
-			defaultQuery := "first_seen_at.gt:3 days ago, -ai generated&sf=wilson_score&sd=desc"
-			resp, err := http.Get("https://derpibooru.org/api/v1/json/search/images?q=" + defaultQuery)
-			if err != nil {
-				logger.Println(err)
-			}
-			body, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				logger.Println(err)
-			}
-			images := gjson.Get(string(body), "images").Array()
-			results := make(tele.Results, len(images))
-			for k, v := range images {
-				derpResp := DerpiResponse{
-					SourceURL:  gjson.Get(v.Raw, "source_url").Str,
-					ViewURL:    gjson.Get(v.Raw, "view_url").Str,
-					ThumbSmall: gjson.Get(v.Raw, "representations.small").Str,
-				}
-				aspectRatio := gjson.Get(v.Raw, "aspect_ratio").Num
-
-				//Show result
-				result := &tele.PhotoResult{
-					URL: derpResp.ViewURL,
-					Caption: fmt.Sprintf("src : %s\nderpibooru : %s",
-						derpResp.SourceURL,
-						"https://derpibooru.org/images/"+strconv.Itoa(int(gjson.Get(v.Raw, "id").Int()))),
-					ThumbURL: derpResp.ThumbSmall,
-					Width:    int(100 * aspectRatio),
-					Height:   100,
-				}
-
-				result.SetResultID(strconv.Itoa(k))
-				results[k] = result
-
-			}
+			results := searchQuery("safe, first_seen_at.gt:3 days ago, -ai generated&sf=wilson_score&sd=desc", logger)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
@@ -143,9 +119,11 @@ func checkType(c tele.Context, logger *log.Logger) int {
 		format = def
 		return format
 	}
-	if _, err := url.ParseRequestURI(c.Query().Text); err != nil {
-		logger.Printf("malformed URL: %s\n", c.Query().Text)
-		format = nan
+
+	u, err := url.Parse(c.Query().Text)
+	if !(err == nil && u.Scheme != "" && u.Host != "") {
+		logger.Printf("NOT URL: %s\n", c.Query().Text)
+		format = search
 		return format
 	}
 
@@ -169,4 +147,41 @@ func checkType(c tele.Context, logger *log.Logger) int {
 		format = img
 	}
 	return format
+}
+
+func searchQuery(query string, logger *log.Logger) tele.Results {
+	resp, err := http.Get("https://derpibooru.org/api/v1/json/search/images?filter_id=56027&q=" + query)
+	if err != nil {
+		logger.Println(err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		logger.Println(err)
+	}
+	images := gjson.Get(string(body), "images").Array()
+	results := make(tele.Results, len(images))
+	for k, v := range images {
+		derpResp := DerpiResponse{
+			SourceURL:  gjson.Get(v.Raw, "source_url").Str,
+			ViewURL:    gjson.Get(v.Raw, "view_url").Str,
+			ThumbSmall: gjson.Get(v.Raw, "representations.small").Str,
+		}
+		aspectRatio := gjson.Get(v.Raw, "aspect_ratio").Num
+
+		//Show result
+		result := &tele.PhotoResult{
+			URL: derpResp.ViewURL,
+			Caption: fmt.Sprintf("src : %s\nderpibooru : %s",
+				derpResp.SourceURL,
+				"https://derpibooru.org/images/"+strconv.Itoa(int(gjson.Get(v.Raw, "id").Int()))),
+			ThumbURL: derpResp.ThumbSmall,
+			Width:    int(100 * aspectRatio),
+			Height:   100,
+		}
+
+		result.SetResultID(strconv.Itoa(k))
+		results[k] = result
+
+	}
+	return results
 }
