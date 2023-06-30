@@ -5,6 +5,6 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o derpiautoposter_kek_bot .
 
-FROM scratch
+FROM arm32v7/alpine
 COPY --from=builder /opt/derpiautoposter_kek_bot /
 ENTRYPOINT ["/derpiautoposter_kek_bot"]
