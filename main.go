@@ -37,8 +37,9 @@ func main() {
 
 	//Start up bot
 	pref := tele.Settings{
-		Token:  os.Getenv("TOKEN"),
-		Poller: &tele.LongPoller{Timeout: 60 * time.Second},
+		Token:     os.Getenv("TOKEN"),
+		Poller:    &tele.LongPoller{Timeout: 60 * time.Second},
+		ParseMode: tele.ModeMarkdown,
 	}
 	logger.Printf("started bot with this token : %s", os.Getenv("TOKEN"))
 
@@ -91,8 +92,8 @@ func main() {
 			results := make(tele.Results, 1)
 			result := &tele.PhotoResult{
 				URL: derpResp.ViewURL,
-				Caption: fmt.Sprintf("src : %s\nderpibooru : %s",
-					derpResp.SourceURL,
+				Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
+					formatURL(derpResp.SourceURL),
 					c.Query().Text),
 				ThumbURL: derpResp.ThumbSmall,
 				Width:    int(100 * aspectRatio),
@@ -171,8 +172,8 @@ func searchQuery(query string, logger *log.Logger) tele.Results {
 		//Show result
 		result := &tele.PhotoResult{
 			URL: derpResp.ViewURL,
-			Caption: fmt.Sprintf("src : %s\nderpibooru : %s",
-				derpResp.SourceURL,
+			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
+				formatURL(derpResp.SourceURL),
 				"https://derpibooru.org/images/"+strconv.Itoa(int(gjson.Get(v.Raw, "id").Int()))),
 			ThumbURL: derpResp.ThumbSmall,
 			Width:    int(100 * aspectRatio),
@@ -184,4 +185,14 @@ func searchQuery(query string, logger *log.Logger) tele.Results {
 
 	}
 	return results
+}
+
+// formatURL returns URL formatted with markdown for btter TG display
+func formatURL(url string) string {
+	//lim 37 , 3 dots, 34
+	if len(url) > 35 {
+		return fmt.Sprintf("[%s](%s)", string([]byte(url)[0:35])+"...", url)
+	} else {
+		return url
+	}
 }
