@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -62,7 +63,12 @@ func main() {
 			})
 		case def:
 			logger.Printf("handling %s \n", "default")
-			results := searchQuery("safe, first_seen_at.gt:3 days ago, -ai generated&sf=wilson_score&sd=desc", logger)
+			q := "safe, first_seen_at.gt:3 days ago, -ai generated&sf=wilson_score&sd=desc"
+			if c.Query().Text != "" {
+				page := c.Query().Text[1 : len(c.Query().Text)-1]
+				q += "&page=" + page
+			}
+			results := searchQuery(q, logger)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
@@ -116,7 +122,10 @@ func main() {
 
 func checkType(c tele.Context, logger *log.Logger) int {
 	format := nan
-	if c.Query().Text == "" {
+
+	//[num] detection to switch pages in default use
+	r, _ := regexp.Compile(`^\[[0-9]+\]$`)
+	if c.Query().Text == "" || r.MatchString(c.Query().Text) {
 		format = def
 		return format
 	}
