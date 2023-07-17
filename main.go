@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -52,27 +51,35 @@ func main() {
 	//Inline link posting
 	b.Handle(tele.OnQuery, func(c tele.Context) error {
 		format := checkType(c, logger)
+		var offset int64
+		if c.Query().Offset != "" {
+			offset, err = strconv.ParseInt(c.Query().Offset, 10, 32)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
 		switch format {
 		case search:
-			results := searchQuery(c.Query().Text, logger)
+			q := c.Query().Text
+			q += "&page=" + c.Query().Offset
+			results := searchQuery(q, logger)
 			logger.Printf("handling %s \n", c.Query().Text)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
 				CacheTime:  1,
+				NextOffset: fmt.Sprint(offset + 1),
 			})
 		case def:
 			logger.Printf("handling %s \n", "default")
 			q := "safe, first_seen_at.gt:3 days ago, -ai generated&sf=wilson_score&sd=desc"
-			if c.Query().Text != "" {
-				page := c.Query().Text[1 : len(c.Query().Text)-1]
-				q += "&page=" + page
-			}
+			q += "&page=" + c.Query().Offset
 			results := searchQuery(q, logger)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
 				CacheTime:  1,
+				NextOffset: fmt.Sprint(offset + 1),
 			})
 		case img:
 			postURL := c.Query().Text
@@ -123,9 +130,7 @@ func main() {
 func checkType(c tele.Context, logger *log.Logger) int {
 	format := nan
 
-	//[num] detection to switch pages in default use
-	r, _ := regexp.Compile(`^\[[0-9]+\]$`)
-	if c.Query().Text == "" || r.MatchString(c.Query().Text) {
+	if c.Query().Text == "" {
 		format = def
 		return format
 	}
