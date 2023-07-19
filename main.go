@@ -49,6 +49,8 @@ func main() {
 		return
 	}
 	//Inline link posting
+	loaded := make(chan bool, 1)
+	loaded <- true
 	b.Handle(tele.OnQuery, func(c tele.Context) error {
 		format := checkType(c, logger)
 		var offset int64
@@ -57,30 +59,37 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+		} else {
+			offset = 1
 		}
+		<-loaded
 		switch format {
 		case search:
+			time.Sleep(time.Second)
 			q := c.Query().Text
-			q += "&page=" + c.Query().Offset
+			q += "&page=" + fmt.Sprint(offset)
 			results := searchQuery(q, logger)
 			logger.Printf("handling %s \n", c.Query().Text)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
-				CacheTime:  5,
+				CacheTime:  10,
 				NextOffset: fmt.Sprint(offset + 1),
 			})
+			loaded <- true
 		case def:
-			logger.Printf("handling %s \n", "default")
-			q := "safe, first_seen_at.gt:3 days ago, -ai generated&sf=wilson_score&sd=desc"
-			q += "&page=" + c.Query().Offset
+			time.Sleep(time.Second * 6)
+			logger.Printf("handling default, offset : %d \n", offset)
+			q := "safe, score.gt:100"
+			q += "&page=" + fmt.Sprint(offset)
 			results := searchQuery(q, logger)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
-				CacheTime:  5,
+				CacheTime:  10,
 				NextOffset: fmt.Sprint(offset + 1),
 			})
+			loaded <- true
 		case img:
 			postURL := c.Query().Text
 			splittedURL := strings.Split(postURL, "/")
@@ -97,7 +106,7 @@ func main() {
 			derpResp := DerpiResponse{
 				SourceURL:  gjson.Get(string(body), "image.source_url").Str,
 				ViewURL:    gjson.Get(string(body), "image.view_url").Str,
-				ThumbSmall: gjson.Get(string(body), "image.representations.small").Str,
+				ThumbSmall: gjson.Get(string(body), "image.representations.thumb").Str,
 			}
 			aspectRatio := gjson.Get(string(body), "image.aspect_ratio").Num
 
@@ -119,8 +128,9 @@ func main() {
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
-				CacheTime:  5,
+				CacheTime:  10,
 			})
+			loaded <- true
 		}
 		return nil
 	})
@@ -165,9 +175,16 @@ func checkType(c tele.Context, logger *log.Logger) int {
 }
 
 func searchQuery(query string, logger *log.Logger) tele.Results {
-	resp, err := http.Get("https://derpibooru.org/api/v1/json/search/images?filter_id=56027&q=" + query)
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", "https://derpibooru.org/api/v1/json/search/images?filter_id=56027&q="+query, nil)
 	if err != nil {
 		logger.Println(err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0")
+	req.Header.Set("Connection", "keep-alive")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalln(err)
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -179,7 +196,7 @@ func searchQuery(query string, logger *log.Logger) tele.Results {
 		derpResp := DerpiResponse{
 			SourceURL:  gjson.Get(v.Raw, "source_url").Str,
 			ViewURL:    gjson.Get(v.Raw, "view_url").Str,
-			ThumbSmall: gjson.Get(v.Raw, "representations.thumb_small").Str,
+			ThumbSmall: gjson.Get(v.Raw, "representations.thumb").Str,
 		}
 		aspectRatio := gjson.Get(v.Raw, "aspect_ratio").Num
 
