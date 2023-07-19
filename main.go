@@ -67,7 +67,7 @@ func main() {
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
-				CacheTime:  1,
+				CacheTime:  5,
 				NextOffset: fmt.Sprint(offset + 1),
 			})
 		case def:
@@ -78,7 +78,7 @@ func main() {
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
-				CacheTime:  1,
+				CacheTime:  5,
 				NextOffset: fmt.Sprint(offset + 1),
 			})
 		case img:
@@ -119,7 +119,7 @@ func main() {
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
 				IsPersonal: true,
-				CacheTime:  1,
+				CacheTime:  5,
 			})
 		}
 		return nil
@@ -179,7 +179,7 @@ func searchQuery(query string, logger *log.Logger) tele.Results {
 		derpResp := DerpiResponse{
 			SourceURL:  gjson.Get(v.Raw, "source_url").Str,
 			ViewURL:    gjson.Get(v.Raw, "view_url").Str,
-			ThumbSmall: gjson.Get(v.Raw, "representations.small").Str,
+			ThumbSmall: gjson.Get(v.Raw, "representations.thumb_small").Str,
 		}
 		aspectRatio := gjson.Get(v.Raw, "aspect_ratio").Num
 
