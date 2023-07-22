@@ -65,30 +65,30 @@ func main() {
 		<-loaded
 		switch format {
 		case search:
-			time.Sleep(time.Second)
 			q := c.Query().Text
 			q += "&page=" + fmt.Sprint(offset)
 			results := searchQuery(q, logger)
 			logger.Printf("handling %s \n", c.Query().Text)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
-				IsPersonal: true,
-				CacheTime:  10,
+				IsPersonal: false,
+				CacheTime:  240,
 				NextOffset: fmt.Sprint(offset + 1),
 			})
+			time.Sleep(time.Second)
 			loaded <- true
 		case def:
-			time.Sleep(time.Second * 6)
 			logger.Printf("handling default, offset : %d \n", offset)
 			q := "safe, score.gt:100"
 			q += "&page=" + fmt.Sprint(offset)
 			results := searchQuery(q, logger)
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
-				IsPersonal: true,
-				CacheTime:  10,
+				IsPersonal: false,
+				CacheTime:  240,
 				NextOffset: fmt.Sprint(offset + 1),
 			})
+			time.Sleep(time.Second * 4)
 			loaded <- true
 		case img:
 			postURL := c.Query().Text
@@ -127,8 +127,8 @@ func main() {
 
 			c.Answer(&tele.QueryResponse{
 				Results:    results,
-				IsPersonal: true,
-				CacheTime:  10,
+				IsPersonal: false,
+				CacheTime:  240,
 			})
 			loaded <- true
 		}
