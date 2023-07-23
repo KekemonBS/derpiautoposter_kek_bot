@@ -40,6 +40,7 @@ func main() {
 		Token:     os.Getenv("TOKEN"),
 		Poller:    &tele.LongPoller{Timeout: 60 * time.Second},
 		ParseMode: tele.ModeMarkdown,
+		//Synchronous: true,
 	}
 	logger.Printf("started bot with this token : %s", os.Getenv("TOKEN"))
 
@@ -52,89 +53,99 @@ func main() {
 	loaded := make(chan bool, 1)
 	loaded <- true
 	b.Handle(tele.OnQuery, func(c tele.Context) error {
-		format := checkType(c, logger)
-		var offset int64
-		if c.Query().Offset != "" {
-			offset, err = strconv.ParseInt(c.Query().Offset, 10, 32)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			offset = 1
-		}
-		<-loaded
-		switch format {
-		case search:
-			q := c.Query().Text
-			q += "&page=" + fmt.Sprint(offset)
-			results := searchQuery(q, logger)
-			logger.Printf("handling %s \n", c.Query().Text)
-			c.Answer(&tele.QueryResponse{
-				Results:    results,
-				IsPersonal: false,
-				CacheTime:  240,
-				NextOffset: fmt.Sprint(offset + 1),
-			})
-			time.Sleep(time.Second)
-			loaded <- true
-		case def:
-			logger.Printf("handling default, offset : %d \n", offset)
-			q := "safe, score.gt:100"
-			q += "&page=" + fmt.Sprint(offset)
-			results := searchQuery(q, logger)
-			c.Answer(&tele.QueryResponse{
-				Results:    results,
-				IsPersonal: false,
-				CacheTime:  240,
-				NextOffset: fmt.Sprint(offset + 1),
-			})
-			time.Sleep(time.Second * 4)
-			loaded <- true
-		case img:
-			postURL := c.Query().Text
-			splittedURL := strings.Split(postURL, "/")
-			postID := splittedURL[len(splittedURL)-1]
-			resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
-			if err != nil {
-				logger.Println(err)
-			}
-			body, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				logger.Println(err)
-			}
-
-			derpResp := DerpiResponse{
-				SourceURL:  gjson.Get(string(body), "image.source_url").Str,
-				ViewURL:    gjson.Get(string(body), "image.view_url").Str,
-				ThumbSmall: gjson.Get(string(body), "image.representations.thumb").Str,
-			}
-			aspectRatio := gjson.Get(string(body), "image.aspect_ratio").Num
-
-			//Show result
-			results := make(tele.Results, 1)
-			result := &tele.PhotoResult{
-				URL: derpResp.ViewURL,
-				Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
-					formatURL(derpResp.SourceURL),
-					c.Query().Text),
-				ThumbURL: derpResp.ThumbSmall,
-				Width:    int(100 * aspectRatio),
-				Height:   100,
-			}
-
-			result.SetResultID(strconv.Itoa(1))
-			results[0] = result
-
-			c.Answer(&tele.QueryResponse{
-				Results:    results,
-				IsPersonal: false,
-				CacheTime:  240,
-			})
-			loaded <- true
+		err := inlineQueryHandler(c, logger, loaded)
+		if err != nil {
+			return err
 		}
 		return nil
 	})
 	b.Start()
+}
+
+func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool) error {
+	//Check what are we dealing with
+	format := checkType(c, logger)
+	//Calculate offset for query
+	var offset int64
+	if c.Query().Offset != "" {
+		var err error
+		offset, err = strconv.ParseInt(c.Query().Offset, 10, 32)
+		if err != nil {
+			return err
+		}
+	} else {
+		offset = 1
+	}
+	<-loaded
+	//Deal with different types of metadata/searches
+	switch format {
+	case search:
+		q := c.Query().Text
+		q += "&page=" + fmt.Sprint(offset)
+		results := searchQuery(q, logger)
+		logger.Printf("handling %s \n", c.Query().Text)
+		c.Answer(&tele.QueryResponse{
+			Results:    results,
+			IsPersonal: true,
+			CacheTime:  0,
+			NextOffset: fmt.Sprint(offset + 1),
+		})
+		time.Sleep(time.Second * 4)
+		loaded <- true
+	case def:
+		logger.Println("handling default")
+		q := "first_seen_at.gt:3 days ago, -ai generated, safe"
+		q += "&per_page=50&page=1"
+		results := searchQuery(q, logger)
+		c.Answer(&tele.QueryResponse{
+			Results:    results,
+			IsPersonal: false,
+			CacheTime:  5 * 60,
+		})
+		loaded <- true
+	case img:
+		postURL := c.Query().Text
+		splittedURL := strings.Split(postURL, "/")
+		postID := splittedURL[len(splittedURL)-1]
+		resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
+		if err != nil {
+			logger.Println(err)
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			logger.Println(err)
+		}
+
+		derpResp := DerpiResponse{
+			SourceURL:  gjson.Get(string(body), "image.source_url").Str,
+			ViewURL:    gjson.Get(string(body), "image.view_url").Str,
+			ThumbSmall: gjson.Get(string(body), "image.representations.thumb").Str,
+		}
+		aspectRatio := gjson.Get(string(body), "image.aspect_ratio").Num
+
+		//Show result
+		results := make(tele.Results, 1)
+		result := &tele.PhotoResult{
+			URL: derpResp.ViewURL,
+			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
+				formatURL(derpResp.SourceURL),
+				c.Query().Text),
+			ThumbURL: derpResp.ThumbSmall,
+			Width:    int(100 * aspectRatio),
+			Height:   100,
+		}
+
+		result.SetResultID(strconv.Itoa(1))
+		results[0] = result
+
+		c.Answer(&tele.QueryResponse{
+			Results:    results,
+			IsPersonal: true,
+			CacheTime:  0,
+		})
+		loaded <- true
+	}
+	return nil
 }
 
 func checkType(c tele.Context, logger *log.Logger) int {
