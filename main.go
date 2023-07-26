@@ -87,10 +87,9 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool) er
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: true,
-			CacheTime:  0,
+			CacheTime:  5,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		time.Sleep(time.Second * 4)
 		loaded <- true
 	case def:
 		logger.Println("handling default")
