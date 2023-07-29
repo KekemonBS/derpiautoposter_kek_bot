@@ -116,7 +116,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool) er
 		}
 
 		derpResp := DerpiResponse{
-			SourceURL:  gjson.Get(string(body), "image.source_url").Str,
+			SourceURL:  gjson.Get(string(body), "image.representations.full").Str,
 			ViewURL:    gjson.Get(string(body), "image.view_url").Str,
 			ThumbSmall: gjson.Get(string(body), "image.representations.thumb").Str,
 		}
@@ -204,7 +204,7 @@ func searchQuery(query string, logger *log.Logger) tele.Results {
 	results := make(tele.Results, len(images))
 	for k, v := range images {
 		derpResp := DerpiResponse{
-			SourceURL:  gjson.Get(v.Raw, "source_url").Str,
+			SourceURL:  gjson.Get(v.Raw, "representations.full").Str,
 			ViewURL:    gjson.Get(v.Raw, "view_url").Str,
 			ThumbSmall: gjson.Get(v.Raw, "representations.thumb").Str,
 		}
