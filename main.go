@@ -230,6 +230,10 @@ func searchQuery(query string, logger *log.Logger) tele.Results {
 
 // formatURL returns URL formatted with markdown for btter TG display
 func formatURL(url string) string {
+	//what if absent
+	if url == "" {
+		return "Немає :<"
+	}
 	//lim 37 , 3 dots, 34
 	if len(url) > 35 {
 		return fmt.Sprintf("[%s](%s)", string([]byte(url)[0:35])+"...", url)
