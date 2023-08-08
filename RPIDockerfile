@@ -7,4 +7,5 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o derpiautoposter_kek_
 
 FROM --platform=linux/arm/v7 arm32v7/alpine
 COPY --from=builder /opt/derpiautoposter_kek_bot /
+EXPOSE 80
 ENTRYPOINT ["/derpiautoposter_kek_bot"]
