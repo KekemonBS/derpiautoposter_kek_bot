@@ -107,7 +107,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 	case search:
 		q := c.Query().Text
 		q += "&page=" + fmt.Sprint(offset)
-		results := searchQuery(q, logger, is)
+		results := searchQuery(q, logger, is, false)
 		logger.Printf("handling %s \n", c.Query().Text)
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
@@ -118,9 +118,9 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 		loaded <- true
 	case def:
 		logger.Println("handling default")
-		q := "first_seen_at.gt:3 days ago, -ai generated, safe"
+		q := "first_seen_at.gt%3A1+days+ago%2C+-ai+generated&sf=wilson_score&sd=desc"
 		q += "&per_page=50&page=1"
-		results := searchQuery(q, logger, is)
+		results := searchQuery(q, logger, is, true)
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: false,
@@ -228,9 +228,16 @@ func getImage(postURL string, logger *log.Logger, is *ImageServer) tele.Results 
 	return results
 }
 
-func searchQuery(query string, logger *log.Logger, is *ImageServer) tele.Results {
+func searchQuery(query string, logger *log.Logger, is *ImageServer, sfw bool) tele.Results {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://derpibooru.org/api/v1/json/search/images?filter_id=56027&q="+query, nil)
+
+	q := "https://derpibooru.org/api/v1/json/search/images?"
+	if !sfw {
+		q = q + "filter_id=56027&" //everything
+	}
+	q = q + "q="
+
+	req, err := http.NewRequest("GET", q+query, nil)
 	if err != nil {
 		logger.Println(err)
 	}
