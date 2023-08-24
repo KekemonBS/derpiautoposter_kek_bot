@@ -123,7 +123,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 		results := searchQuery(q, logger, is, true)
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
-			IsPersonal: false,
+			IsPersonal: true,
 			CacheTime:  10 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
