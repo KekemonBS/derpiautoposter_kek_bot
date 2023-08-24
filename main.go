@@ -124,7 +124,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: true,
-			CacheTime:  10 * 60,
+			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
 		loaded <- true
