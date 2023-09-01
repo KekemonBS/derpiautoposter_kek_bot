@@ -115,10 +115,12 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
+		time.Sleep(time.Second * 3)
 		loaded <- true
 	case def:
 		logger.Println("handling default")
 		q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated&sf=wilson_score&sd=desc"
+		//q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated%2C+score.gt%3A100"
 		q += "&page=" + fmt.Sprint(offset)
 		results := searchQuery(q, logger, is, true)
 		c.Answer(&tele.QueryResponse{
@@ -127,6 +129,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
+		//time.Sleep(time.Second * 3)
 		loaded <- true
 	case img:
 		results := getImage(c.Query().Text, logger, is)
@@ -135,6 +138,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 			IsPersonal: false,
 			CacheTime:  2 * 60,
 		})
+		time.Sleep(time.Second * 3)
 		loaded <- true
 	}
 	return nil
