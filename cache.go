@@ -23,11 +23,11 @@ import (
 var notHosted error = errors.New("Not hosted")
 var badData error = errors.New("Bad data")
 
-type ImageCache struct {
+type Cahce struct {
 	cache *goc.Cache
 }
 
-func NewCache(ctx context.Context) *ImageCache {
+func NewCache(ctx context.Context) *Cahce {
 	c := goc.New(time.Second*15, time.Minute*2)
 	go func() {
 		for {
@@ -38,12 +38,12 @@ func NewCache(ctx context.Context) *ImageCache {
 			}
 		}
 	}()
-	return &ImageCache{
+	return &Cahce{
 		cache: c,
 	}
 }
 
-func (ic *ImageCache) TMPSave(derpiURL string) error {
+func (ic *Cahce) TMPSaveImage(derpiURL string) error {
 	resp, err := http.Get(derpiURL)
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func (ic *ImageCache) TMPSave(derpiURL string) error {
 	return nil
 }
 
-func (ic *ImageCache) GetImageByURL(derpiURL string) (image.Image, error) {
+func (ic *Cahce) GetImageByURL(derpiURL string) (image.Image, error) {
 	id, err := GetImageID(derpiURL)
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func (ic *ImageCache) GetImageByURL(derpiURL string) (image.Image, error) {
 	return ic.GetImageByID(id)
 }
 
-func (ic *ImageCache) GetImageByID(id string) (image.Image, error) {
+func (ic *Cahce) GetImageByID(id string) (image.Image, error) {
 	img, ok := ic.cache.Get(id)
 	if !ok {
 		return nil, notHosted
@@ -99,4 +99,20 @@ func getURLSegments(path string) []string {
 		return []string{}
 	}
 	return strings.Split(unescaped, "/")
+}
+
+func (ic *Cahce) TMPSaveBody(derpiURL string, body []byte) error {
+	return ic.cache.Add(derpiURL, body, time.Minute*15)
+}
+
+func (ic *Cahce) GetBodyByURL(derpiURL string) ([]byte, error) {
+	res, ok := ic.cache.Get(derpiURL)
+	if !ok {
+		return nil, notHosted
+	}
+	body, ok := res.([]byte)
+	if !ok {
+		return nil, badData
+	}
+	return body, nil
 }
