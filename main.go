@@ -45,8 +45,8 @@ func main() {
 		cancel()
 	}()
 
-	ic := NewCache(ctx)
-	is := NewServer(ctx, ic, domainName)
+	cache := NewCache(ctx)
+	cs := NewServer(ctx, cache, domainName)
 
 	//Start up bot
 	pref := tele.Settings{
@@ -67,7 +67,7 @@ func main() {
 	loaded := make(chan bool, 1)
 	loaded <- true
 	b.Handle(tele.OnQuery, func(c tele.Context) error {
-		err := inlineQueryHandler(c, logger, loaded, is)
+		err := inlineQueryHandler(c, logger, loaded, cs)
 		if err != nil {
 			return err
 		}
@@ -87,7 +87,7 @@ func main() {
 	b.Start()
 }
 
-func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is *ImageServer) error {
+func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs *CacheServer) error {
 	//Check what are we dealing with
 	format := checkType(c, logger)
 	//Calculate offset for query
@@ -107,7 +107,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 	case search:
 		q := c.Query().Text
 		q += "&page=" + fmt.Sprint(offset)
-		results := searchQuery(q, logger, is, false)
+		results := searchQuery(q, logger, cs, false)
 		logger.Printf("handling %s \n", c.Query().Text)
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
@@ -122,7 +122,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 		q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated&sf=wilson_score&sd=desc"
 		//q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated%2C+score.gt%3A100"
 		q += "&page=" + fmt.Sprint(offset)
-		results := searchQuery(q, logger, is, true)
+		results := searchQuery(q, logger, cs, true)
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: true,
@@ -132,7 +132,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, is
 		//time.Sleep(time.Second * 3)
 		loaded <- true
 	case img:
-		results := getImage(c.Query().Text, logger, is)
+		results := getImage(c.Query().Text, logger, cs)
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: false,
@@ -181,9 +181,11 @@ func checkType(c tele.Context, logger *log.Logger) int {
 	return format
 }
 
-func getImage(postURL string, logger *log.Logger, is *ImageServer) tele.Results {
+func getImage(postURL string, logger *log.Logger, cs *CacheServer) tele.Results {
 	splittedURL := strings.Split(postURL, "/")
 	postID := splittedURL[len(splittedURL)-1]
+
+	//Here i do not do caching cause it does not contribute to API abuse
 	resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
 	if err != nil {
 		logger.Println(err)
@@ -193,22 +195,22 @@ func getImage(postURL string, logger *log.Logger, is *ImageServer) tele.Results 
 	if err != nil {
 		logger.Println(err)
 	}
-	//------------------caching--------------------
+	//------------------image caching--------------------
 
 	thumb := gjson.Get(string(body), "image.representations.thumb_small").Str
-	_, err = is.cache.GetImageByURL(thumb)
+	_, err = cs.cache.GetImageByURL(thumb)
 	if err != nil {
-		is.cache.TMPSave(thumb)
+		cs.cache.TMPSaveImage(thumb)
 	}
 	cacheThumbLinkID, err := GetImageID(thumb)
 	if err != nil {
 		logger.Println(err)
 	}
-	cacheThumbLink := is.dn + cacheThumbLinkID
+	cacheThumbLink := cs.dn + cacheThumbLinkID
 
 	logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
 
-	//---------------------------------------------
+	//---------------------------------------------------
 	derpResp := DerpiResponse{
 		SourceURL:  gjson.Get(string(body), "image.source_url").Str,
 		ViewURL:    gjson.Get(string(body), "image.representations.full").Str,
@@ -233,50 +235,65 @@ func getImage(postURL string, logger *log.Logger, is *ImageServer) tele.Results 
 	return results
 }
 
-func searchQuery(query string, logger *log.Logger, is *ImageServer, sfw bool) tele.Results {
+func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) tele.Results {
 	client := &http.Client{}
 
 	q := "https://derpibooru.org/api/v1/json/search/images?"
 	if !sfw {
 		q = q + "filter_id=56027&" //everything
 	}
-	q = q + "q="
+	q = q + "q=" + query
 
-	req, err := http.NewRequest("GET", q+query, nil)
+	//------------------body caching--------------------
+
+	_, err := cs.cache.GetBodyByURL(q)
+	if err != nil {
+		req, err := http.NewRequest("GET", q, nil)
+		if err != nil {
+			logger.Println(err)
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0")
+		req.Header.Set("Connection", "keep-alive")
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer resp.Body.Close()
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			logger.Println(err)
+		}
+
+		cs.cache.TMPSaveBody(q, b)
+		logger.Println("SAVED BODY")
+	}
+	body, err := cs.cache.GetBodyByURL(q)
 	if err != nil {
 		logger.Println(err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0")
-	req.Header.Set("Connection", "keep-alive")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		logger.Println(err)
-	}
+
+	//--------------------------------------------------
+
 	images := gjson.Get(string(body), "images").Array()
 	results := make(tele.Results, len(images))
 	for k, v := range images {
-		//------------------caching--------------------
+		//------------------image caching--------------------
 
 		thumb := gjson.Get(string(body), "representations.thumb_small").Str
-		_, err = is.cache.GetImageByURL(thumb)
+		_, err = cs.cache.GetImageByURL(thumb)
 		if err != nil {
-			is.cache.TMPSave(thumb)
+			cs.cache.TMPSaveImage(thumb)
 			logger.Println("SAVED")
 		}
 		cacheThumbLinkID, err := GetImageID(thumb)
 		if err != nil {
 			logger.Println(err)
 		}
-		cacheThumbLink := is.dn + cacheThumbLinkID
+		cacheThumbLink := cs.dn + cacheThumbLinkID
 
 		logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
 
-		//---------------------------------------------
+		//---------------------------------------------------
 		derpResp := DerpiResponse{
 			SourceURL:  gjson.Get(v.Raw, "source_url").Str,
 			ViewURL:    gjson.Get(v.Raw, "representations.full").Str,

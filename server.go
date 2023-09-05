@@ -15,21 +15,23 @@ import (
 	I pulled this away from cache so i do not feel overwhelmed
 */
 
-type ImageCacheInterface interface {
-	TMPSave(string) error
+type CacheInterface interface {
+	TMPSaveImage(string) error
 	GetImageByURL(string) (image.Image, error)
 	GetImageByID(string) (image.Image, error)
+	TMPSaveBody(string, []byte) error
+	GetBodyByURL(string) ([]byte, error)
 }
 
-type ImageServer struct {
+type CacheServer struct {
 	dn    string
-	cache ImageCacheInterface
+	cache CacheInterface
 	serv  *http.Server
 }
 
-func NewServer(ctx context.Context, ic ImageCacheInterface, dn string) *ImageServer {
-	is := ImageServer{}
-	is.cache = ic
+func NewServer(ctx context.Context, c CacheInterface, dn string) *CacheServer {
+	is := CacheServer{}
+	is.cache = c
 	is.dn = dn
 	//init server
 
@@ -63,7 +65,7 @@ func NewServer(ctx context.Context, ic ImageCacheInterface, dn string) *ImageSer
 }
 
 // it is simple as /<post_id>
-func (is *ImageServer) GetImage(w http.ResponseWriter, r *http.Request) {
+func (is *CacheServer) GetImage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 	w.Header().Set("Content-Type", "image/png")
