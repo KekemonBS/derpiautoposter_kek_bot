@@ -291,7 +291,7 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		}
 		cacheThumbLink := cs.dn + cacheThumbLinkID
 
-		logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
+		//logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
 
 		//---------------------------------------------------
 		derpResp := DerpiResponse{
