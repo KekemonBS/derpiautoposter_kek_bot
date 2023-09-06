@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -129,7 +129,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		//time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 3)
 		loaded <- true
 	case img:
 		results := getImage(c.Query().Text, logger, cs)
@@ -138,7 +138,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			IsPersonal: false,
 			CacheTime:  2 * 60,
 		})
-		time.Sleep(time.Second * 3)
+		//time.Sleep(time.Second * 3)
 		loaded <- true
 	}
 	return nil
@@ -166,7 +166,7 @@ func checkType(c tele.Context, logger *log.Logger) int {
 	if err != nil {
 		logger.Println(err)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Println(err)
 	}
@@ -191,7 +191,7 @@ func getImage(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 		logger.Println(err)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Println(err)
 	}
@@ -259,7 +259,7 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 			log.Fatalln(err)
 		}
 		defer resp.Body.Close()
-		b, err := ioutil.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
 		if err != nil {
 			logger.Println(err)
 		}
