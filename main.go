@@ -162,6 +162,9 @@ func checkType(c tele.Context, logger *log.Logger) int {
 	postURL := c.Query().Text
 	splittedURL := strings.Split(postURL, "/")
 	postID := splittedURL[len(splittedURL)-1]
+
+	//Here i do not do caching cause it does not contribute to API abuse
+	//one-off operation almost certainly wont cause collision to justify cache use
 	resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
 	if err != nil {
 		logger.Println(err)
@@ -186,6 +189,7 @@ func getImage(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	postID := splittedURL[len(splittedURL)-1]
 
 	//Here i do not do caching cause it does not contribute to API abuse
+	//one-off operation almost certainly wont cause collision to justify cache use
 	resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
 	if err != nil {
 		logger.Println(err)
