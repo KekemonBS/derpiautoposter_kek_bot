@@ -119,7 +119,8 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 		loaded <- true
 	case def:
 		logger.Println("handling default")
-		q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated&sf=wilson_score&sd=desc"
+		q := os.Getenv("DEFAULT_QUERY")
+		//q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated&sf=wilson_score&sd=desc"
 		//q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated%2C+score.gt%3A100"
 		q += "&page=" + fmt.Sprint(offset)
 		results := searchQuery(q, logger, cs, true)
@@ -256,7 +257,7 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		if err != nil {
 			logger.Println(err)
 		}
-		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/117.0")
 		req.Header.Set("Connection", "keep-alive")
 		resp, err := client.Do(req)
 		if err != nil {
@@ -287,7 +288,7 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		_, err = cs.cache.GetImageByURL(thumb)
 		if err != nil {
 			cs.cache.TMPSaveImage(thumb)
-			logger.Println("SAVED")
+			logger.Println("SAVED " + thumb)
 		}
 		cacheThumbLinkID, err := GetImageID(thumb)
 		if err != nil {

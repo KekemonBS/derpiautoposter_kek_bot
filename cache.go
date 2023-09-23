@@ -28,7 +28,7 @@ type Cahce struct {
 }
 
 func NewCache(ctx context.Context) *Cahce {
-	c := goc.New(time.Minute*15, time.Minute*2)
+	c := goc.New(time.Hour, time.Minute*30)
 	go func() {
 		for {
 			select {
@@ -58,7 +58,7 @@ func (ic *Cahce) TMPSaveImage(derpiURL string) error {
 		return err
 	}
 	fmt.Printf("saved thumbnail in cache with id: %s\n", id)
-	err = ic.cache.Add(id, img, time.Minute*30)
+	err = ic.cache.Add(id, img, time.Hour*2)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func getURLSegments(path string) []string {
 }
 
 func (ic *Cahce) TMPSaveBody(derpiURL string, body []byte) error {
-	return ic.cache.Add(derpiURL, body, time.Minute*30)
+	return ic.cache.Add(derpiURL, body, time.Hour*2)
 }
 
 func (ic *Cahce) GetBodyByURL(derpiURL string) ([]byte, error) {
