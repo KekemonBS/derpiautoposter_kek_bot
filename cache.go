@@ -28,7 +28,7 @@ type Cahce struct {
 }
 
 func NewCache(ctx context.Context) *Cahce {
-	c := goc.New(time.Hour, time.Minute*30)
+	c := goc.New(time.Hour*2, time.Minute*30)
 	go func() {
 		for {
 			select {
