@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"net/http"
 	"net/url"
@@ -25,6 +26,11 @@ var badData error = errors.New("Bad data")
 
 type Cahce struct {
 	cache *goc.Cache
+}
+
+type Image struct {
+	img        image.Image
+	formatName string
 }
 
 func NewCache(ctx context.Context) *Cahce {
@@ -49,38 +55,56 @@ func (ic *Cahce) TMPSaveImage(derpiURL string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	img, err := png.Decode(resp.Body)
+
+	//----determine image type----
+	_, formatName, err := image.DecodeConfig(resp.Body)
 	if err != nil {
 		return err
 	}
+
+	var img image.Image
+	switch formatName {
+	case "png":
+		img, err = png.Decode(resp.Body)
+		if err != nil {
+			return err
+		}
+	case "jpeg":
+		img, err = jpeg.Decode(resp.Body)
+		if err != nil {
+			return err
+		}
+	}
+	//----------------------------
+
 	id, err := GetImageID(derpiURL)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("saved thumbnail in cache with id: %s\n", id)
-	err = ic.cache.Add(id, img, time.Hour*2)
+	err = ic.cache.Add(id, Image{img, formatName}, time.Hour*2)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (ic *Cahce) GetImageByURL(derpiURL string) (image.Image, error) {
+func (ic *Cahce) GetImageByURL(derpiURL string) (Image, error) {
 	id, err := GetImageID(derpiURL)
 	if err != nil {
-		return nil, err
+		return Image{}, err
 	}
 	return ic.GetImageByID(id)
 }
 
-func (ic *Cahce) GetImageByID(id string) (image.Image, error) {
+func (ic *Cahce) GetImageByID(id string) (Image, error) {
 	img, ok := ic.cache.Get(id)
 	if !ok {
-		return nil, notHosted
+		return Image{}, notHosted
 	}
-	val, ok := img.(image.Image)
+	val, ok := img.(Image)
 	if !ok {
-		return nil, badData
+		return Image{}, badData
 	}
 	return val, nil
 }

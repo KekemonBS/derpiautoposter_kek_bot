@@ -2,8 +2,7 @@ package main
 
 import (
 	"context"
-	"image"
-	"image/png"
+	"image/jpeg"
 	"log"
 	"net/http"
 	"time"
@@ -17,8 +16,8 @@ import (
 
 type CacheInterface interface {
 	TMPSaveImage(string) error
-	GetImageByURL(string) (image.Image, error)
-	GetImageByID(string) (image.Image, error)
+	GetImageByURL(string) (Image, error)
+	GetImageByID(string) (Image, error)
 	TMPSaveBody(string, []byte) error
 	GetBodyByURL(string) ([]byte, error)
 }
@@ -68,13 +67,17 @@ func NewServer(ctx context.Context, c CacheInterface, dn string) *CacheServer {
 func (is *CacheServer) GetImage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
-	w.Header().Set("Content-Type", "image/png")
 	img, err := is.cache.GetImageByID(id)
 	if err != nil {
 		http.Error(w, "Error getting image from cache", http.StatusInternalServerError)
 	}
-	err = png.Encode(w, img)
-	if err != nil {
-		http.Error(w, "Error encoding image", http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "image/jpeg")
+	switch img.formatName {
+	case "png", "jpeg":
+		err = jpeg.Encode(w, img.img, nil)
+		if err != nil {
+			http.Error(w, "Error encoding image", http.StatusInternalServerError)
+		}
 	}
+
 }
