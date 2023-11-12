@@ -23,15 +23,17 @@ type CacheInterface interface {
 }
 
 type CacheServer struct {
-	dn    string
-	cache CacheInterface
-	serv  *http.Server
+	dn     string
+	cache  CacheInterface
+	serv   *http.Server
+	logger *log.Logger
 }
 
-func NewServer(ctx context.Context, c CacheInterface, dn string) *CacheServer {
+func NewServer(ctx context.Context, c CacheInterface, dn string, logger *log.Logger) *CacheServer {
 	is := CacheServer{}
 	is.cache = c
 	is.dn = dn
+	is.logger = logger
 	//init server
 
 	mux := mux.NewRouter()

@@ -45,8 +45,8 @@ func main() {
 		cancel()
 	}()
 
-	cache := NewCache(ctx)
-	cs := NewServer(ctx, cache, domainName)
+	cache := NewCache(ctx, logger)
+	cs := NewServer(ctx, cache, domainName, logger)
 
 	//Start up bot
 	pref := tele.Settings{
@@ -115,7 +115,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 2)
 		loaded <- true
 	case def:
 		logger.Println("handling default")
@@ -130,7 +130,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 2)
 		loaded <- true
 	case img:
 		results := getImage(c.Query().Text, logger, cs)
@@ -270,7 +270,6 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		}
 
 		cs.cache.TMPSaveBody(q, b)
-		logger.Println("SAVED BODY")
 	}
 	body, err := cs.cache.GetBodyByURL(q)
 	if err != nil {
@@ -284,11 +283,13 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 	for k, v := range images {
 		//------------------image caching--------------------
 
-		thumb := gjson.Get(string(body), "representations.thumb_small").Str
+		thumb := gjson.Get(v.String(), "representations.thumb_small").Str
 		_, err = cs.cache.GetImageByURL(thumb)
 		if err != nil {
-			cs.cache.TMPSaveImage(thumb)
-			logger.Println("SAVED " + thumb)
+			err = cs.cache.TMPSaveImage(thumb)
+			if err != nil {
+				logger.Println(err)
+			}
 		}
 		cacheThumbLinkID, err := GetImageID(thumb)
 		if err != nil {

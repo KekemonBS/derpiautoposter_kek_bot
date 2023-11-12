@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,7 +27,8 @@ var notHosted error = errors.New("Not hosted")
 var badData error = errors.New("Bad data")
 
 type Cahce struct {
-	cache *goc.Cache
+	cache  *goc.Cache
+	logger *log.Logger
 }
 
 type Image struct {
@@ -33,7 +36,7 @@ type Image struct {
 	formatName string
 }
 
-func NewCache(ctx context.Context) *Cahce {
+func NewCache(ctx context.Context, logger *log.Logger) *Cahce {
 	c := goc.New(time.Hour*2, time.Minute*30)
 	go func() {
 		for {
@@ -45,32 +48,37 @@ func NewCache(ctx context.Context) *Cahce {
 		}
 	}()
 	return &Cahce{
-		cache: c,
+		cache:  c,
+		logger: logger,
 	}
 }
 
 func (ic *Cahce) TMPSaveImage(derpiURL string) error {
+	ic.logger.Printf("getting : %s\n", derpiURL)
 	resp, err := http.Get(derpiURL)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
-	//----determine image type----
-	_, formatName, err := image.DecodeConfig(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 
+	//----determine image type----
+	_, formatName, err := image.DecodeConfig(bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
 	var img image.Image
 	switch formatName {
 	case "png":
-		img, err = png.Decode(resp.Body)
+		img, err = png.Decode(bytes.NewReader(body))
 		if err != nil {
 			return err
 		}
 	case "jpeg":
-		img, err = jpeg.Decode(resp.Body)
+		img, err = jpeg.Decode(bytes.NewReader(body))
 		if err != nil {
 			return err
 		}
@@ -81,7 +89,7 @@ func (ic *Cahce) TMPSaveImage(derpiURL string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("saved thumbnail in cache with id: %s\n", id)
+	ic.logger.Printf("saved thumb with id: %s\n", id)
 	err = ic.cache.Add(id, Image{img, formatName}, time.Hour*2)
 	if err != nil {
 		return err
@@ -126,6 +134,7 @@ func getURLSegments(path string) []string {
 }
 
 func (ic *Cahce) TMPSaveBody(derpiURL string, body []byte) error {
+	ic.logger.Println("saved body")
 	return ic.cache.Add(derpiURL, body, time.Hour*2)
 }
 
