@@ -115,7 +115,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 3)
 		loaded <- true
 	case def:
 		logger.Println("handling default")
@@ -130,7 +130,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 3)
 		loaded <- true
 	case img:
 		results := getImage(c.Query().Text, logger, cs)
