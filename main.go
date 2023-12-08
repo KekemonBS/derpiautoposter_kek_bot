@@ -164,8 +164,7 @@ func checkType(c tele.Context, logger *log.Logger) int {
 	splittedURL := strings.Split(postURL, "/")
 	postID := splittedURL[len(splittedURL)-1]
 
-	//Here i do not do caching cause it does not contribute to API abuse
-	//one-off operation almost certainly wont cause collision to justify cache use
+	//TODO: remove get, get rid of media type check (needs to be done after fetch in getImage, probably change to getMedia)
 	resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
 	if err != nil {
 		logger.Println(err)
