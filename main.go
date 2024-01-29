@@ -215,7 +215,7 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 			URL: derpResp.ViewURL,
 			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
 				formatURL(derpResp.SourceURL),
-				postURL),
+				stripPostURL(postURL)),
 			ThumbURL: derpResp.ThumbSmall,
 			Width:    int(100 * aspectRatio),
 			Height:   100,
@@ -227,7 +227,7 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 			URL: derpResp.ViewURL,
 			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
 				formatURL(derpResp.SourceURL),
-				postURL),
+				stripPostURL(postURL)),
 			ThumbURL: derpResp.ThumbSmall,
 			Width:    int(100 * aspectRatio),
 			Height:   100,
@@ -325,15 +325,24 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 }
 
 // formatURL returns URL formatted with markdown for btter TG display
-func formatURL(url string) string {
+func formatURL(URL string) string {
 	//what if absent
-	if url == "" {
+	if URL == "" {
 		return "Немає :<"
 	}
 	//lim 37 , 3 dots, 34
-	if len(url) > 35 {
-		return fmt.Sprintf("[%s](%s)", string([]byte(url)[0:35])+"...", url)
+	if len(URL) > 35 {
+		return fmt.Sprintf("[%s](%s)", string([]byte(URL)[0:35])+"...", URL)
 	} else {
-		return url
+		return URL
 	}
+}
+
+// stripPostURL trips search query from post url
+func stripPostURL(URL string) string {
+	u, err := url.Parse(URL)
+	if err != nil {
+		return URL
+	}
+	return u.Scheme + "://" + u.Host + u.Path
 }
