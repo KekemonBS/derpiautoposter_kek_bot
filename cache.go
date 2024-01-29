@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"image"
+	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -79,6 +80,11 @@ func (ic *Cahce) TMPSaveImage(derpiURL string) error {
 		}
 	case "jpeg":
 		img, err = jpeg.Decode(bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+	case "gif":
+		img, err = gif.Decode(bytes.NewReader(body))
 		if err != nil {
 			return err
 		}

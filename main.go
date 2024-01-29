@@ -19,9 +19,7 @@ import (
 
 const (
 	def = iota
-	img
-	vid
-	gif
+	media
 	search
 	nan
 )
@@ -89,7 +87,7 @@ func main() {
 
 func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs *CacheServer) error {
 	//Check what are we dealing with
-	format := checkType(c, logger)
+	format := checkSearchType(c, logger)
 	//Calculate offset for query
 	var offset int64
 	if c.Query().Offset != "" {
@@ -132,8 +130,8 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 		})
 		time.Sleep(time.Second * 3)
 		loaded <- true
-	case img:
-		results := getImage(c.Query().Text, logger, cs)
+	case media:
+		results := getMedia(c.Query().Text, logger, cs)
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: false,
@@ -145,46 +143,21 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 	return nil
 }
 
-func checkType(c tele.Context, logger *log.Logger) int {
-	format := nan
-
+func checkSearchType(c tele.Context, logger *log.Logger) int {
 	if c.Query().Text == "" {
-		format = def
-		return format
+		return def
 	}
 
 	u, err := url.Parse(c.Query().Text)
 	if !(err == nil && u.Scheme != "" && u.Host != "") {
 		logger.Printf("NOT URL: %s\n", c.Query().Text)
-		format = search
-		return format
+		return search
 	}
 
-	postURL := c.Query().Text
-	splittedURL := strings.Split(postURL, "/")
-	postID := splittedURL[len(splittedURL)-1]
-
-	//TODO: remove get, get rid of media type check (needs to be done after fetch in getImage, probably change to getMedia)
-	resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
-	if err != nil {
-		logger.Println(err)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Println(err)
-	}
-	mimeType := gjson.Get(string(body), "image.mime_type").Str
-	smt := strings.Split(mimeType, "/")[0]
-	switch smt {
-	case "video":
-		format = vid
-	case "image":
-		format = img
-	}
-	return format
+	return media
 }
 
-func getImage(postURL string, logger *log.Logger, cs *CacheServer) tele.Results {
+func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results {
 	splittedURL := strings.Split(postURL, "/")
 	postID := splittedURL[len(splittedURL)-1]
 
@@ -200,8 +173,8 @@ func getImage(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 		logger.Println(err)
 	}
 	//------------------image caching--------------------
-
 	thumb := gjson.Get(string(body), "image.representations.thumb_small").Str
+
 	_, err = cs.cache.GetImageByURL(thumb)
 	if err != nil {
 		cs.cache.TMPSaveImage(thumb)
@@ -215,30 +188,57 @@ func getImage(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	//logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
 
 	//---------------------------------------------------
+
+	//Check if image is not too large for telegram
+	var viewUrl string
+	width := gjson.Get(string(body), "image.width").Int()
+	height := gjson.Get(string(body), "image.height").Int()
+	if width > 2000 || height > 2000 {
+		viewUrl = gjson.Get(string(body), "image.representations.medium").Str
+	} else {
+		viewUrl = gjson.Get(string(body), "image.representations.full").Str
+	}
+
 	derpResp := DerpiResponse{
 		SourceURL:  gjson.Get(string(body), "image.source_url").Str,
-		ViewURL:    gjson.Get(string(body), "image.representations.full").Str,
+		ViewURL:    viewUrl,
 		ThumbSmall: cacheThumbLink,
 	}
 	aspectRatio := gjson.Get(string(body), "image.aspect_ratio").Num
 
 	//Show result
 	results := make(tele.Results, 1)
-	result := &tele.PhotoResult{
-		URL: derpResp.ViewURL,
-		Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
-			formatURL(derpResp.SourceURL),
-			postURL),
-		ThumbURL: derpResp.ThumbSmall,
-		Width:    int(100 * aspectRatio),
-		Height:   100,
+	mimeType := gjson.Get(string(body), "image.mime_type").Str
+	switch mimeType {
+	case "image/gif":
+		result := &tele.GifResult{
+			URL: derpResp.ViewURL,
+			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
+				formatURL(derpResp.SourceURL),
+				postURL),
+			ThumbURL: derpResp.ThumbSmall,
+			Width:    int(100 * aspectRatio),
+			Height:   100,
+		}
+		result.SetResultID(strconv.Itoa(1))
+		results[0] = result
+	default:
+		result := &tele.PhotoResult{
+			URL: derpResp.ViewURL,
+			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
+				formatURL(derpResp.SourceURL),
+				postURL),
+			ThumbURL: derpResp.ThumbSmall,
+			Width:    int(100 * aspectRatio),
+			Height:   100,
+		}
+		result.SetResultID(strconv.Itoa(1))
+		results[0] = result
 	}
-
-	result.SetResultID(strconv.Itoa(1))
-	results[0] = result
 	return results
 }
 
+// Telegam forbids mixing gifs and images so this function remains intact
 func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) tele.Results {
 	client := &http.Client{}
 
