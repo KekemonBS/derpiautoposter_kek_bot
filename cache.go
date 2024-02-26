@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/image/webp"
+
 	goc "github.com/patrickmn/go-cache"
 )
 
@@ -80,6 +82,11 @@ func (ic *Cahce) TMPSaveImage(derpiURL string) error {
 		}
 	case "jpeg":
 		img, err = jpeg.Decode(bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+	case "webp":
+		img, err = webp.Decode(bytes.NewReader(body))
 		if err != nil {
 			return err
 		}

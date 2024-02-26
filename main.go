@@ -299,9 +299,20 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		//logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
 
 		//---------------------------------------------------
+
+		//Check if image is not too large for telegram
+		var viewUrl string
+		width := gjson.Get(v.String(), "width").Int()
+		height := gjson.Get(v.String(), "height").Int()
+		if width > 2000 || height > 2000 {
+			viewUrl = gjson.Get(v.String(), "representations.medium").Str
+		} else {
+			viewUrl = gjson.Get(v.String(), "representations.full").Str
+		}
+
 		derpResp := DerpiResponse{
 			SourceURL:  gjson.Get(v.Raw, "source_url").Str,
-			ViewURL:    gjson.Get(v.Raw, "representations.full").Str,
+			ViewURL:    viewUrl,
 			ThumbSmall: cacheThumbLink,
 		}
 		aspectRatio := gjson.Get(v.Raw, "aspect_ratio").Num
