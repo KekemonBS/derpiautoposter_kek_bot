@@ -113,7 +113,6 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		time.Sleep(time.Second * 3)
 		loaded <- true
 	case def:
 		logger.Println("handling default")
@@ -128,7 +127,6 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		time.Sleep(time.Second * 3)
 		loaded <- true
 	case media:
 		results := getMedia(c.Query().Text, logger, cs)
@@ -137,7 +135,6 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			IsPersonal: false,
 			CacheTime:  2 * 60,
 		})
-		//time.Sleep(time.Second * 3)
 		loaded <- true
 	}
 	return nil
@@ -245,6 +242,8 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 	q := "https://derpibooru.org/api/v1/json/search/images?"
 	if !sfw {
 		q = q + "filter_id=56027&" //everything
+	} else {
+		q = q + "filter_id=100073&" //default
 	}
 	q = q + "q=" + query
 
@@ -269,6 +268,8 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		}
 
 		cs.cache.TMPSaveBody(q, b)
+
+		time.Sleep(time.Second * 3) //do not strain server too much, rate limiting prevention
 	}
 	body, err := cs.cache.GetBodyByURL(q)
 	if err != nil {
