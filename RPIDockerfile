@@ -3,7 +3,9 @@ WORKDIR /opt
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-s -w" -o derpiautoposter_kek_bot .
 
-FROM --platform=linux/arm/v7 arm32v7/alpine
+FROM --platform=linux/arm/v7 shinsenter/scratch
+#arm32v7/alpine
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /opt/derpiautoposter_kek_bot /
 EXPOSE 80
 ENTRYPOINT ["/derpiautoposter_kek_bot"]
