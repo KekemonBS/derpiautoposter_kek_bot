@@ -1,7 +1,7 @@
 FROM golang:latest AS builder
 WORKDIR /opt
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o derpiautoposter_kek_bot .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-s -w" -o derpiautoposter_kek_bot .
 
 FROM --platform=linux/arm/v7 arm32v7/alpine
 COPY --from=builder /opt/derpiautoposter_kek_bot /
