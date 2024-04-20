@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -32,6 +33,12 @@ type DerpiResponse struct {
 	ThumbSmall string
 }
 
+type debouncer struct {
+	mu          *sync.Mutex
+	timers      map[int64]*time.Timer
+	lastChannel map[int64]chan bool
+}
+
 func main() {
 	domainName := os.Getenv("DOMAIN_NAME")
 	logger := log.New(os.Stdout, "INFO: ", log.Lshortfile)
@@ -46,16 +53,25 @@ func main() {
 	cache := NewCache(ctx, logger)
 	cs := NewServer(ctx, cache, domainName, logger)
 
-	//Start up bot
+	//Create poller
+	poller := &tele.MiddlewarePoller{
+		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+
+		Filter: func(u *tele.Update) bool {
+			return true
+		},
+	}
+	//Setup preferences
 	pref := tele.Settings{
 		Token:     os.Getenv("TOKEN"),
-		Poller:    &tele.LongPoller{Timeout: 10 * time.Second},
+		Poller:    poller,
 		ParseMode: tele.ModeMarkdown,
 		//Verbose:   true,
 		//Synchronous: true,
 	}
 	logger.Printf("started bot with this token : %s", os.Getenv("TOKEN"))
 
+	//Start up bot
 	b, err := tele.NewBot(pref)
 	if err != nil {
 		log.Fatal(err)
@@ -64,8 +80,15 @@ func main() {
 	//Inline link posting
 	loaded := make(chan bool, 1)
 	loaded <- true
+
+	d := &debouncer{
+		mu:          &sync.Mutex{},
+		timers:      make(map[int64]*time.Timer),
+		lastChannel: make(map[int64]chan bool),
+	}
+
 	b.Handle(tele.OnQuery, func(c tele.Context) error {
-		err := inlineQueryHandler(c, logger, loaded, cs)
+		err := inlineQueryDebouncer(c, logger, loaded, cs, d)
 		if err != nil {
 			return err
 		}
@@ -83,6 +106,70 @@ func main() {
 	}()
 
 	b.Start()
+}
+
+// inlineQueryDebouncer discards updates that were sent in the last 2 seconds (wait till user stops typing)
+func inlineQueryDebouncer(c tele.Context, logger *log.Logger, loaded chan bool, cs *CacheServer, d *debouncer) error {
+	logger.Printf("got query: %s", c.Query().Text)
+
+	u := c.Update()
+
+	errChan := make(chan error)
+	timers := d.timers
+	lastChannel := d.lastChannel
+	go func(u *tele.Update) {
+		d.mu.Lock()
+		logger.Printf("got lock")
+		// Create a new timer if none exists and select it
+		var timer *time.Timer
+		if _, ok := timers[u.Query.Sender.ID]; !ok {
+			timer = time.NewTimer(2 * time.Second)
+			timers[u.Query.Sender.ID] = timer
+		} else {
+			timer = timers[u.Query.Sender.ID]
+		}
+		timer.Reset(2 * time.Second) //every new query resets the timer
+
+		//Every query discards the last query
+		if _, ok := lastChannel[u.Query.Sender.ID]; !ok {
+			lastChannel[u.Query.Sender.ID] = make(chan bool)
+		} else {
+			lastChannel[u.Query.Sender.ID] <- true
+		}
+
+		//And places own channel for possible discarding by new query
+		ownChannel := make(chan bool)
+		lastChannel[u.Query.Sender.ID] = ownChannel
+		logger.Printf("got before mutex")
+		d.mu.Unlock()
+
+		logger.Printf("got behind mutex")
+		select {
+		//Wait on timer to be processed
+		case <-timer.C:
+			logger.Printf("accepting query: %s", c.Query().Text)
+			d.mu.Lock()
+			delete(timers, u.Query.Sender.ID)
+			delete(lastChannel, u.Query.Sender.ID)
+			d.mu.Unlock()
+			err := inlineQueryHandler(c, logger, loaded, cs)
+			if err != nil {
+				errChan <- err
+				return
+			}
+		//Or to be discarded by next query
+		case <-ownChannel:
+			logger.Printf("discarding query: %s", c.Query().Text)
+			return
+		}
+	}(&u)
+
+	select {
+	case err := <-errChan:
+		return err
+	default:
+		return nil
+	}
 }
 
 func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs *CacheServer) error {
@@ -241,7 +328,7 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 
 	q := "https://derpibooru.org/api/v1/json/search/images?"
 	if !sfw {
-		q = q + "filter_id=56027&" //everything
+		q = q + "filter_id=100073&" //56027&" //everything
 	} else {
 		q = q + "filter_id=100073&" //default
 	}
@@ -268,8 +355,6 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		}
 
 		cs.cache.TMPSaveBody(q, b)
-
-		time.Sleep(time.Second * 3) //do not strain server too much, rate limiting prevention
 	}
 	body, err := cs.cache.GetBodyByURL(q)
 	if err != nil {
