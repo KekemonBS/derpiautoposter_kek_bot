@@ -144,7 +144,7 @@ func inlineQueryDebouncer(c tele.Context, logger *log.Logger, loaded chan bool, 
 		d.mu.Unlock()
 		logger.Printf("got behind mutex")
 
-		//Tom make sure default queries or links sent faster
+		//To make sure default queries or links sent faster
 		format := checkSearchType(c, logger)
 		if format == def || format == media {
 			timer.Reset(200 * time.Millisecond)
