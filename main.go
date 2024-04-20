@@ -142,8 +142,14 @@ func inlineQueryDebouncer(c tele.Context, logger *log.Logger, loaded chan bool, 
 		lastChannel[u.Query.Sender.ID] = ownChannel
 		logger.Printf("got before mutex")
 		d.mu.Unlock()
-
 		logger.Printf("got behind mutex")
+
+		//Tom make sure default queries or links sent faster
+		format := checkSearchType(c, logger)
+		if format == def || format == media {
+			timer.Reset(200 * time.Millisecond)
+		}
+
 		select {
 		//Wait on timer to be processed
 		case <-timer.C:
