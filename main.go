@@ -78,8 +78,8 @@ func main() {
 		return
 	}
 	//Inline link posting
-	loaded := make(chan bool, 1)
-	loaded <- true
+	//loaded := make(chan bool, 1)
+	//loaded <- true
 
 	d := &debouncer{
 		mu:          &sync.Mutex{},
@@ -88,7 +88,7 @@ func main() {
 	}
 
 	b.Handle(tele.OnQuery, func(c tele.Context) error {
-		err := inlineQueryDebouncer(c, logger, loaded, cs, d)
+		err := inlineQueryDebouncer(c, logger, cs, d)
 		if err != nil {
 			return err
 		}
@@ -108,27 +108,42 @@ func main() {
 	b.Start()
 }
 
-// inlineQueryDebouncer discards updates that were sent in the last 2 seconds (wait till user stops typing)
-func inlineQueryDebouncer(c tele.Context, logger *log.Logger, loaded chan bool, cs *CacheServer, d *debouncer) error {
-	logger.Printf("got query: %s", c.Query().Text)
+// inlineQueryDebouncer discards updates that were sent in the last 2 second (wait till user stops typing)
+func inlineQueryDebouncer(c tele.Context, logger *log.Logger, cs *CacheServer, d *debouncer) error {
+
+	//To make sure default queries, links and cached queries sent faster
+	format := checkSearchType(c, logger)
+	_, err := cs.cache.GetBodyByURL(c.Query().Text)
+	if format == def || format == media || err != nil {
+		time.Sleep(200 * time.Millisecond)
+		err := inlineQueryHandler(c, logger, cs)
+		if err != nil {
+			return err
+		}
+	}
 
 	u := c.Update()
 
 	errChan := make(chan error)
 	timers := d.timers
 	lastChannel := d.lastChannel
-	go func(u *tele.Update) {
+	go func(u tele.Update) {
 		d.mu.Lock()
-		logger.Printf("got lock")
 		// Create a new timer if none exists and select it
 		var timer *time.Timer
 		if _, ok := timers[u.Query.Sender.ID]; !ok {
-			timer = time.NewTimer(2 * time.Second)
+			timer = time.NewTimer(1500 * time.Millisecond)
 			timers[u.Query.Sender.ID] = timer
 		} else {
 			timer = timers[u.Query.Sender.ID]
 		}
-		timer.Reset(2 * time.Second) //every new query resets the timer
+
+		//Every new query resets the time
+		if u.Query.Offset > "0" {
+			timer.Reset(200 * time.Millisecond) //consequent is faster
+		} else {
+			timer.Reset(1500 * time.Millisecond)
+		}
 
 		//Every query discards the last query
 		if _, ok := lastChannel[u.Query.Sender.ID]; !ok {
@@ -140,36 +155,27 @@ func inlineQueryDebouncer(c tele.Context, logger *log.Logger, loaded chan bool, 
 		//And places own channel for possible discarding by new query
 		ownChannel := make(chan bool)
 		lastChannel[u.Query.Sender.ID] = ownChannel
-		logger.Printf("got before mutex")
+
 		d.mu.Unlock()
-		logger.Printf("got behind mutex")
-
-		//To make sure default queries, links and cached queries sent faster
-		format := checkSearchType(c, logger)
-		_, err := cs.cache.GetBodyByURL(c.Query().Text)
-		if format == def || format == media || err != nil {
-			timer.Reset(200 * time.Millisecond)
-		}
-
 		select {
-		//Wait on timer to be processed
+		//Wait to be discarded by next query
+		case <-ownChannel:
+			logger.Printf("discarding query: %s", c.Query().Text)
+			return
+		//Or wait on timer to be processed
 		case <-timer.C:
 			logger.Printf("accepting query: %s", c.Query().Text)
 			d.mu.Lock()
 			delete(timers, u.Query.Sender.ID)
 			delete(lastChannel, u.Query.Sender.ID)
 			d.mu.Unlock()
-			err := inlineQueryHandler(c, logger, loaded, cs)
+			err := inlineQueryHandler(c, logger, cs)
 			if err != nil {
 				errChan <- err
 				return
 			}
-		//Or to be discarded by next query
-		case <-ownChannel:
-			logger.Printf("discarding query: %s", c.Query().Text)
-			return
 		}
-	}(&u)
+	}(u)
 
 	select {
 	case err := <-errChan:
@@ -179,7 +185,7 @@ func inlineQueryDebouncer(c tele.Context, logger *log.Logger, loaded chan bool, 
 	}
 }
 
-func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs *CacheServer) error {
+func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) error {
 	//Check what are we dealing with
 	format := checkSearchType(c, logger)
 	//Calculate offset for query
@@ -193,7 +199,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 	} else {
 		offset = 1
 	}
-	<-loaded
+	//<-loaded
 	//Deal with different types of metadata/searches
 	switch format {
 	case search:
@@ -207,7 +213,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		loaded <- true
+		//loaded <- true
 	case def:
 		logger.Println("handling default")
 		q := os.Getenv("DEFAULT_QUERY")
@@ -221,7 +227,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			CacheTime:  2 * 60,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
-		loaded <- true
+		//loaded <- true
 	case media:
 		results := getMedia(c.Query().Text, logger, cs)
 		c.Answer(&tele.QueryResponse{
@@ -229,7 +235,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, loaded chan bool, cs
 			IsPersonal: false,
 			CacheTime:  2 * 60,
 		})
-		loaded <- true
+		//loaded <- true
 	}
 	return nil
 }
@@ -241,7 +247,6 @@ func checkSearchType(c tele.Context, logger *log.Logger) int {
 
 	u, err := url.Parse(c.Query().Text)
 	if !(err == nil && u.Scheme != "" && u.Host != "") {
-		logger.Printf("NOT URL: %s\n", c.Query().Text)
 		return search
 	}
 
