@@ -29,6 +29,7 @@ type CacheServer struct {
 	logger *log.Logger
 }
 
+// NewServer creates server of cached images
 func NewServer(ctx context.Context, c CacheInterface, dn string, logger *log.Logger) *CacheServer {
 	is := CacheServer{}
 	is.cache = c
@@ -65,7 +66,7 @@ func NewServer(ctx context.Context, c CacheInterface, dn string, logger *log.Log
 	return &is
 }
 
-// it is simple as /<post_id>
+// GetImage handler. It is simple as /<post_id>
 func (is *CacheServer) GetImage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]

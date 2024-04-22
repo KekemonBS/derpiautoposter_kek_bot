@@ -57,7 +57,7 @@ func main() {
 	poller := &tele.MiddlewarePoller{
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 
-		Filter: func(u *tele.Update) bool {
+		Filter: func(_ *tele.Update) bool {
 			return true
 		},
 	}
@@ -112,7 +112,7 @@ func main() {
 func inlineQueryDebouncer(c tele.Context, logger *log.Logger, cs *CacheServer, d *debouncer) error {
 
 	//To make sure default queries, links and cached queries sent faster
-	format := checkSearchType(c, logger)
+	format := checkSearchType(c)
 	_, err := cs.cache.GetBodyByURL(c.Query().Text)
 	if format == def || format == media || err != nil {
 		time.Sleep(200 * time.Millisecond)
@@ -187,7 +187,7 @@ func inlineQueryDebouncer(c tele.Context, logger *log.Logger, cs *CacheServer, d
 
 func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) error {
 	//Check what are we dealing with
-	format := checkSearchType(c, logger)
+	format := checkSearchType(c)
 	//Calculate offset for query
 	var offset int64
 	if c.Query().Offset != "" {
@@ -240,7 +240,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) err
 	return nil
 }
 
-func checkSearchType(c tele.Context, logger *log.Logger) int {
+func checkSearchType(c tele.Context) int {
 	if c.Query().Text == "" {
 		return def
 	}
