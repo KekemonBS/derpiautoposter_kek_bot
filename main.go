@@ -125,6 +125,7 @@ func inlineQueryDebouncer(c tele.Context, logger *log.Logger, cs *CacheServer, d
 	u := c.Update()
 
 	errChan := make(chan error)
+	defer close(errChan)
 	timers := d.timers
 	lastChannel := d.lastChannel
 	go func(u tele.Update) {
