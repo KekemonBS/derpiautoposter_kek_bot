@@ -173,8 +173,8 @@ func inlineQueryDebouncer(c tele.Context, logger *log.Logger, cs *CacheServer, d
 			err := inlineQueryHandler(c, logger, cs)
 			if err != nil {
 				errChan <- err
-				return
 			}
+			return
 		}
 	}(u)
 
