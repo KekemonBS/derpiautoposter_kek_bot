@@ -287,18 +287,18 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	//---------------------------------------------------
 
 	//Check if image is not too large for telegram
-	var viewUrl string
+	var viewURL string
 	width := gjson.Get(string(body), "image.width").Int()
 	height := gjson.Get(string(body), "image.height").Int()
 	if width > 2000 || height > 2000 {
-		viewUrl = gjson.Get(string(body), "image.representations.medium").Str
+		viewURL = gjson.Get(string(body), "image.representations.medium").Str
 	} else {
-		viewUrl = gjson.Get(string(body), "image.representations.full").Str
+		viewURL = gjson.Get(string(body), "image.representations.full").Str
 	}
 
 	derpResp := DerpiResponse{
 		SourceURL:  gjson.Get(string(body), "image.source_url").Str,
-		ViewURL:    viewUrl,
+		ViewURL:    viewURL,
 		ThumbSmall: cacheThumbLink,
 	}
 	aspectRatio := gjson.Get(string(body), "image.aspect_ratio").Num
@@ -400,18 +400,18 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		//---------------------------------------------------
 
 		//Check if image is not too large for telegram
-		var viewUrl string
+		var viewURL string
 		width := gjson.Get(v.String(), "width").Int()
 		height := gjson.Get(v.String(), "height").Int()
 		if width > 2000 || height > 2000 {
-			viewUrl = gjson.Get(v.String(), "representations.medium").Str
+			viewURL = gjson.Get(v.String(), "representations.medium").Str
 		} else {
-			viewUrl = gjson.Get(v.String(), "representations.full").Str
+			viewURL = gjson.Get(v.String(), "representations.full").Str
 		}
 
 		derpResp := DerpiResponse{
 			SourceURL:  gjson.Get(v.Raw, "source_url").Str,
-			ViewURL:    viewUrl,
+			ViewURL:    viewURL,
 			ThumbSmall: cacheThumbLink,
 		}
 		aspectRatio := gjson.Get(v.Raw, "aspect_ratio").Num
@@ -443,9 +443,8 @@ func formatURL(URL string) string {
 	//lim 37 , 3 dots, 34
 	if len(URL) > 35 {
 		return fmt.Sprintf("[%s](%s)", string([]byte(URL)[0:35])+"...", URL)
-	} else {
-		return URL
 	}
+	return URL
 }
 
 // stripPostURL trips search query from post url
