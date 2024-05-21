@@ -269,21 +269,19 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	if err != nil {
 		logger.Println(err)
 	}
+
+	//Skip video caching
+	results := make(tele.Results, 1)
+	mimeType := gjson.Get(string(body), "image.mime_type").Str
+	switch mimeType {
+	case "video/webm":
+		//Telegram does not support inline video results
+		results[0] = &tele.PhotoResult{}
+	}
+
 	//------------------image caching--------------------
-	thumb := gjson.Get(string(body), "image.representations.thumb_small").Str
-
-	_, err = cs.cache.GetImageByURL(thumb)
-	if err != nil {
-		cs.cache.TMPSaveImage(thumb)
-	}
-	cacheThumbLinkID, err := GetImageID(thumb)
-	if err != nil {
-		logger.Println(err)
-	}
-	cacheThumbLink := cs.dn + cacheThumbLinkID
-
-	//logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
-
+	jsonString := gjson.Get(string(body), "image").String() //{"image":{get this}}
+	cacheThumbLink := cacheImage(cs, logger, jsonString)
 	//---------------------------------------------------
 
 	//Check if image is not too large for telegram
@@ -304,8 +302,6 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	aspectRatio := gjson.Get(string(body), "image.aspect_ratio").Num
 
 	//Show result
-	results := make(tele.Results, 1)
-	mimeType := gjson.Get(string(body), "image.mime_type").Str
 	switch mimeType {
 	case "image/gif":
 		result := &tele.GifResult{
@@ -337,8 +333,6 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 
 // Telegam forbids mixing gifs and images so this function remains intact
 func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) tele.Results {
-	client := &http.Client{}
-
 	q := "https://derpibooru.org/api/v1/json/search/images?"
 	if !sfw {
 		q = q + "filter_id=100073&" //56027&" //everything
@@ -348,55 +342,22 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 	q = q + "q=" + query
 
 	//------------------body caching--------------------
-
-	_, err := cs.cache.GetBodyByURL(q)
-	if err != nil {
-		req, err := http.NewRequest("GET", q, nil)
-		if err != nil {
-			logger.Println(err)
-		}
-		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/117.0")
-		req.Header.Set("Connection", "keep-alive")
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		defer resp.Body.Close()
-		b, err := io.ReadAll(resp.Body)
-		if err != nil {
-			logger.Println(err)
-		}
-
-		cs.cache.TMPSaveBody(q, b)
-	}
-	body, err := cs.cache.GetBodyByURL(q)
-	if err != nil {
-		logger.Println(err)
-	}
-
+	body := cacheBody(cs, logger, q)
 	//--------------------------------------------------
 
 	images := gjson.Get(string(body), "images").Array()
 	results := make(tele.Results, len(images))
 	for k, v := range images {
+		//Skip video caching
+		mimeType := gjson.Get(v.String(), "mime_type").Str
+		switch mimeType {
+		case "video/webm":
+			//Telegram does not support inline video results
+			results[k] = &tele.PhotoResult{}
+			continue
+		}
 		//------------------image caching--------------------
-
-		thumb := gjson.Get(v.String(), "representations.thumb_small").Str
-		_, err = cs.cache.GetImageByURL(thumb)
-		if err != nil {
-			err = cs.cache.TMPSaveImage(thumb)
-			if err != nil {
-				logger.Println(err)
-			}
-		}
-		cacheThumbLinkID, err := GetImageID(thumb)
-		if err != nil {
-			logger.Println(err)
-		}
-		cacheThumbLink := cs.dn + cacheThumbLinkID
-
-		//logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
-
+		cacheThumbLink := cacheImage(cs, logger, v.String())
 		//---------------------------------------------------
 
 		//Check if image is not too large for telegram
@@ -432,6 +393,56 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 
 	}
 	return results
+}
+
+// cacheImage selects small thumbnail from provided json,
+// if haven cached yet, saves it (cache key ID) and returns link to saved file
+func cacheImage(cs *CacheServer, logger *log.Logger, jsonSrting string) string {
+	thumb := gjson.Get(jsonSrting, "representations.thumb_small").Str
+	_, err := cs.cache.GetImageByURL(thumb)
+	if err != nil {
+		err = cs.cache.TMPSaveImage(thumb)
+		if err != nil {
+			logger.Println(err)
+		}
+	}
+	cacheThumbLinkID, err := GetImageID(thumb)
+	if err != nil {
+		logger.Println(err)
+	}
+	cacheThumbLink := cs.dn + cacheThumbLinkID
+	//logger.Printf("\n--------------------------\n Added to cache link: %s\n replaced with: %s\n--------------------------\n", thumb, cacheThumbLink)
+	return cacheThumbLink
+}
+
+// cacheBody saves body in cahce (cache key query) and if its absent and returns if from cache
+func cacheBody(cs *CacheServer, logger *log.Logger, q string) []byte {
+	client := &http.Client{}
+	_, err := cs.cache.GetBodyByURL(q)
+	if err != nil {
+		req, err := http.NewRequest("GET", q, nil)
+		if err != nil {
+			logger.Println(err)
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/117.0")
+		req.Header.Set("Connection", "keep-alive")
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer resp.Body.Close()
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logger.Println(err)
+		}
+
+		cs.cache.TMPSaveBody(q, b)
+	}
+	body, err := cs.cache.GetBodyByURL(q)
+	if err != nil {
+		logger.Println(err)
+	}
+	return body
 }
 
 // formatURL returns URL formatted with markdown for btter TG display
