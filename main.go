@@ -211,7 +211,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) err
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: true,
-			CacheTime:  2 * 60,
+			CacheTime:  0,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
 		//loaded <- true
@@ -225,7 +225,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) err
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: true,
-			CacheTime:  2 * 60,
+			CacheTime:  0,
 			NextOffset: fmt.Sprint(offset + 1),
 		})
 		//loaded <- true
@@ -234,7 +234,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) err
 		c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: false,
-			CacheTime:  2 * 60,
+			CacheTime:  0,
 		})
 		//loaded <- true
 	}
@@ -276,18 +276,23 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	switch mimeType {
 	case "video/webm":
 		//Telegram does not support inline video results
-		results[0] = &tele.PhotoResult{}
+		results[0] = &tele.ArticleResult{
+			Title: "Videos are not supported",
+			Text:  "Videos are not supported",
+		}
+		return results
 	}
 
 	//------------------image caching--------------------
 	jsonString := gjson.Get(string(body), "image").String() //{"image":{get this}}
 	cacheThumbLink := cacheImage(cs, logger, jsonString)
+	logger.Println(cacheThumbLink)
 	//---------------------------------------------------
 
 	//Check if image is not too large for telegram
 	var viewURL string
-	width := gjson.Get(string(body), "image.width").Int()
-	height := gjson.Get(string(body), "image.height").Int()
+	width := int(gjson.Get(string(body), "image.width").Int())
+	height := int(gjson.Get(string(body), "image.height").Int())
 	if width > 2000 || height > 2000 {
 		viewURL = gjson.Get(string(body), "image.representations.medium").Str
 	} else {
@@ -299,7 +304,6 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 		ViewURL:    viewURL,
 		ThumbSmall: cacheThumbLink,
 	}
-	aspectRatio := gjson.Get(string(body), "image.aspect_ratio").Num
 
 	//Show result
 	switch mimeType {
@@ -310,8 +314,7 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 				formatURL(derpResp.SourceURL),
 				stripPostURL(postURL)),
 			ThumbURL: derpResp.ThumbSmall,
-			Width:    int(100 * aspectRatio),
-			Height:   100,
+			Cache:    "",
 		}
 		result.SetResultID(strconv.Itoa(1))
 		results[0] = result
@@ -322,8 +325,7 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 				formatURL(derpResp.SourceURL),
 				stripPostURL(postURL)),
 			ThumbURL: derpResp.ThumbSmall,
-			Width:    int(100 * aspectRatio),
-			Height:   100,
+			Cache:    "",
 		}
 		result.SetResultID(strconv.Itoa(1))
 		results[0] = result
@@ -346,14 +348,15 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 	//--------------------------------------------------
 
 	images := gjson.Get(string(body), "images").Array()
-	results := make(tele.Results, len(images))
+	var results tele.Results
+	var skip int
 	for k, v := range images {
 		//Skip video caching
 		mimeType := gjson.Get(v.String(), "mime_type").Str
 		switch mimeType {
 		case "video/webm":
 			//Telegram does not support inline video results
-			results[k] = &tele.PhotoResult{}
+			skip++
 			continue
 		}
 		//------------------image caching--------------------
@@ -375,7 +378,6 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 			ViewURL:    viewURL,
 			ThumbSmall: cacheThumbLink,
 		}
-		aspectRatio := gjson.Get(v.Raw, "aspect_ratio").Num
 
 		//Show result
 		result := &tele.PhotoResult{
@@ -384,12 +386,11 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 				formatURL(derpResp.SourceURL),
 				"https://derpibooru.org/images/"+strconv.Itoa(int(gjson.Get(v.Raw, "id").Int()))),
 			ThumbURL: derpResp.ThumbSmall,
-			Width:    int(100 * aspectRatio),
-			Height:   100,
+			Cache:    "",
 		}
 
-		result.SetResultID(strconv.Itoa(k))
-		results[k] = result
+		result.SetResultID(strconv.Itoa(k - skip))
+		results = append(results, result)
 
 	}
 	return results
