@@ -283,16 +283,18 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 		return results
 	}
 
+	//Get image dimensions
+	width := gjson.Get(string(body), "image.width").Int()
+	height := gjson.Get(string(body), "image.height").Int()
+
 	//------------------image caching--------------------
 	jsonString := gjson.Get(string(body), "image").String() //{"image":{get this}}
-	cacheThumbLink := cacheImage(cs, logger, jsonString)
+	cacheThumbLink := cacheImage(cs, logger, jsonString, width, height)
 	logger.Println(cacheThumbLink)
 	//---------------------------------------------------
 
 	//Check if image is not too large for telegram
 	var viewURL string
-	width := int(gjson.Get(string(body), "image.width").Int())
-	height := int(gjson.Get(string(body), "image.height").Int())
 	if width > 2000 || height > 2000 {
 		viewURL = gjson.Get(string(body), "image.representations.medium").Str
 	} else {
@@ -359,14 +361,17 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 			skip++
 			continue
 		}
+
+		//Get image dimensions
+		width := gjson.Get(v.String(), "width").Int()
+		height := gjson.Get(v.String(), "height").Int()
+
 		//------------------image caching--------------------
-		cacheThumbLink := cacheImage(cs, logger, v.String())
+		cacheThumbLink := cacheImage(cs, logger, v.String(), width, height)
 		//---------------------------------------------------
 
 		//Check if image is not too large for telegram
 		var viewURL string
-		width := gjson.Get(v.String(), "width").Int()
-		height := gjson.Get(v.String(), "height").Int()
 		if width > 2000 || height > 2000 {
 			viewURL = gjson.Get(v.String(), "representations.medium").Str
 		} else {
@@ -398,8 +403,14 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 
 // cacheImage selects small thumbnail from provided json,
 // if haven cached yet, saves it (cache key ID) and returns link to saved file
-func cacheImage(cs *CacheServer, logger *log.Logger, jsonSrting string) string {
-	thumb := gjson.Get(jsonSrting, "representations.thumb_small").Str
+func cacheImage(cs *CacheServer, logger *log.Logger, jsonSrting string, width int64, height int64) string {
+	var thumb string
+	//Check if image thumbnail is not too small for telegram
+	if width > 3000 || height > 3000 {
+		thumb = gjson.Get(jsonSrting, "representations.thumb_small").Str
+	} else {
+		thumb = gjson.Get(jsonSrting, "representations.thumb").Str
+	}
 	_, err := cs.cache.GetImageByURL(thumb)
 	if err != nil {
 		err = cs.cache.TMPSaveImage(thumb)
