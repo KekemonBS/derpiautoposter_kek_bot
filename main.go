@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/tidwall/gjson"
-	tele "gopkg.in/telebot.v3"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+	tele "gopkg.in/telebot.v4"
 )
 
 const (
@@ -269,7 +271,13 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	if err != nil {
 		logger.Println(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = resp.Body.Close()
+		if err != nil {
+			logger.Println("failed during body close")
+			return
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Println(err)
@@ -292,11 +300,27 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	width := gjson.Get(string(body), "image.width").Int()
 	height := gjson.Get(string(body), "image.height").Int()
 
+	//yet i stil cache to make use of local image lookup
 	//------------------image caching--------------------
 	jsonString := gjson.Get(string(body), "image").String() //{"image":{get this}}
-	cacheThumbLink := cacheImage(cs, logger, jsonString, width, height)
+	cacheThumbLink := cacheImage(cs, logger, jsonString, width, height, u)
 	logger.Println(cacheThumbLink)
 	//---------------------------------------------------
+
+	//------------------put thumbnail directly bypassing caching--------------------
+	var thumb string
+	// Check if image thumbnail is not too small for telegram
+	if width > 3000 || height > 3000 {
+		thumb = gjson.Get(jsonString, "representations.thumb_small").Str
+	} else {
+		thumb = gjson.Get(jsonString, "representations.thumb").Str
+	}
+	//ponerpics specific fix, might work with others
+	nu, _ := url.Parse(thumb)
+	if nu.Host == "" {
+		thumb = u.Scheme + "://" + u.Host + thumb
+	}
+	//-----------------------------------------------------------------------------
 
 	//Check if image is not too large for telegram
 	var viewURL string
@@ -306,10 +330,26 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 		viewURL = gjson.Get(string(body), "image.representations.full").Str
 	}
 
+	//ponerpics specific fix, might work with others
+	nu, _ = url.Parse(viewURL)
+	if nu.Host == "" {
+		viewURL = u.Scheme + "://" + u.Host + viewURL
+	}
+
 	derpResp := DerpiResponse{
-		SourceURL:  gjson.Get(string(body), "image.source_url").Str,
-		ViewURL:    viewURL,
-		ThumbSmall: cacheThumbLink,
+		SourceURL: gjson.Get(string(body), "image.source_url").Str,
+		ViewURL:   viewURL,
+		//ThumbSmall: cacheThumbLink,
+		ThumbSmall: thumb,
+	}
+
+	//prone to malfunction consider replacing
+	split := strings.Split(u.Host, ".")
+	var serviceName string
+	if split[0] == "www" {
+		serviceName = split[1]
+	} else {
+		serviceName = split[0]
 	}
 
 	//Show result
@@ -317,8 +357,9 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	case "image/gif":
 		result := &tele.GifResult{
 			URL: derpResp.ViewURL,
-			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
+			Caption: fmt.Sprintf("*Першоджерело*: %s\n*%s*: %s",
 				formatURL(derpResp.SourceURL),
+				cases.Title(language.English).String(serviceName),
 				stripPostURL(postURL)),
 			ThumbURL: derpResp.ThumbSmall,
 			Cache:    "",
@@ -328,8 +369,9 @@ func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results 
 	default:
 		result := &tele.PhotoResult{
 			URL: derpResp.ViewURL,
-			Caption: fmt.Sprintf("*Першоджерело*: %s\n*Derpibooru*: %s",
+			Caption: fmt.Sprintf("*Першоджерело*: %s\n*%s*: %s",
 				formatURL(derpResp.SourceURL),
+				cases.Title(language.English).String(serviceName),
 				stripPostURL(postURL)),
 			ThumbURL: derpResp.ThumbSmall,
 			Cache:    "",
@@ -349,7 +391,7 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		q = q + "filter_id=100073&" //default
 	}
 	q = q + "q=" + query
-
+	u, _ := url.Parse(q)
 	//------------------body caching--------------------
 	body := cacheBody(cs, logger, q)
 	//--------------------------------------------------
@@ -372,7 +414,7 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 		height := gjson.Get(v.String(), "height").Int()
 
 		//------------------image caching--------------------
-		cacheThumbLink := cacheImage(cs, logger, v.String(), width, height)
+		cacheThumbLink := cacheImage(cs, logger, v.String(), width, height, u)
 		//---------------------------------------------------
 
 		//Check if image is not too large for telegram
@@ -407,15 +449,22 @@ func searchQuery(query string, logger *log.Logger, cs *CacheServer, sfw bool) te
 }
 
 // cacheImage selects small thumbnail from provided json,
-// if haven cached yet, saves it (cache key ID) and returns link to saved file
-func cacheImage(cs *CacheServer, logger *log.Logger, jsonSrting string, width int64, height int64) string {
+// if havent cached yet, saves it (cache key ID) and returns link to saved file
+func cacheImage(cs *CacheServer, logger *log.Logger, jsonString string, width int64, height int64, u *url.URL) string {
 	var thumb string
 	//Check if image thumbnail is not too small for telegram
 	if width > 3000 || height > 3000 {
-		thumb = gjson.Get(jsonSrting, "representations.thumb_small").Str
+		thumb = gjson.Get(jsonString, "representations.thumb_small").Str
 	} else {
-		thumb = gjson.Get(jsonSrting, "representations.thumb").Str
+		thumb = gjson.Get(jsonString, "representations.thumb").Str
 	}
+
+	//ponerpics specific fix, might work with others
+	nu, _ := url.Parse(thumb)
+	if nu.Host == "" {
+		thumb = u.Scheme + "://" + u.Host + thumb
+	}
+
 	_, err := cs.cache.GetImageByURL(thumb)
 	if err != nil {
 		err = cs.cache.TMPSaveImage(thumb)
@@ -447,7 +496,14 @@ func cacheBody(cs *CacheServer, logger *log.Logger, q string) []byte {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		defer resp.Body.Close()
+		defer func() {
+			err = resp.Body.Close()
+			if err != nil {
+				logger.Println("failed during body close")
+				return
+			}
+		}()
+
 		b, err := io.ReadAll(resp.Body)
 		if err != nil {
 			logger.Println(err)

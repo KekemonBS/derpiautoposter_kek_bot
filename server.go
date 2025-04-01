@@ -14,6 +14,7 @@ import (
 	I pulled this away from cache so i do not feel overwhelmed
 */
 
+// CacheInterface is a required cache server behaviour
 type CacheInterface interface {
 	TMPSaveImage(string) error
 	GetImageByURL(string) (Image, error)
@@ -22,6 +23,7 @@ type CacheInterface interface {
 	GetBodyByURL(string) ([]byte, error)
 }
 
+// CacheServer is a server for cached images
 type CacheServer struct {
 	dn     string
 	cache  CacheInterface
@@ -57,7 +59,10 @@ func NewServer(ctx context.Context, c CacheInterface, dn string, logger *log.Log
 		for {
 			select {
 			case <-ctx.Done():
-				s.Close()
+				err := s.Close()
+				if err != nil {
+					log.Fatal(err)
+				}
 				return
 			}
 		}
@@ -75,12 +80,9 @@ func (is *CacheServer) GetImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error getting image from cache", http.StatusInternalServerError)
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
-	switch img.formatName {
-	case "png", "jpeg":
-		err = jpeg.Encode(w, img.img, nil)
-		if err != nil {
-			http.Error(w, "Error encoding image", http.StatusInternalServerError)
-		}
+	err = jpeg.Encode(w, img.img, nil)
+	if err != nil {
+		http.Error(w, "Error encoding image", http.StatusInternalServerError)
 	}
 
 }
