@@ -99,7 +99,10 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
-				b.Close()
+				_, err = b.Close()
+				if err != nil {
+					log.Fatal(err)
+				}
 				return
 			}
 		}
@@ -202,13 +205,14 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) err
 	}
 	//<-loaded
 	//Deal with different types of metadata/searches
+	var err error
 	switch format {
 	case search:
 		q := c.Query().Text
 		q += "&page=" + fmt.Sprint(offset)
 		results := searchQuery(q, logger, cs, false)
 		logger.Printf("handling %s \n", c.Query().Text)
-		c.Answer(&tele.QueryResponse{
+		err = c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: true,
 			CacheTime:  0,
@@ -222,7 +226,7 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) err
 		//q := "safe%2C+first_seen_at.gt%3A1+days+ago%2C+-ai+generated%2C+score.gt%3A100"
 		q += "&page=" + fmt.Sprint(offset)
 		results := searchQuery(q, logger, cs, true)
-		c.Answer(&tele.QueryResponse{
+		err = c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: true,
 			CacheTime:  0,
@@ -231,14 +235,14 @@ func inlineQueryHandler(c tele.Context, logger *log.Logger, cs *CacheServer) err
 		//loaded <- true
 	case media:
 		results := getMedia(c.Query().Text, logger, cs)
-		c.Answer(&tele.QueryResponse{
+		err = c.Answer(&tele.QueryResponse{
 			Results:    results,
 			IsPersonal: false,
 			CacheTime:  0,
 		})
 		//loaded <- true
 	}
-	return nil
+	return err
 }
 
 func checkSearchType(c tele.Context) int {
@@ -255,12 +259,13 @@ func checkSearchType(c tele.Context) int {
 }
 
 func getMedia(postURL string, logger *log.Logger, cs *CacheServer) tele.Results {
+	u, _ := url.Parse(postURL)
 	splittedURL := strings.Split(postURL, "/")
 	postID := splittedURL[len(splittedURL)-1]
 
 	//Here i do not do caching cause it does not contribute to API abuse
 	//one-off operation almost certainly wont cause collision to justify cache use
-	resp, err := http.Get("https://derpibooru.org/api/v1/json/images/" + postID)
+	resp, err := http.Get("https://" + u.Host + "/api/v1/json/images/" + postID)
 	if err != nil {
 		logger.Println(err)
 	}
@@ -448,7 +453,10 @@ func cacheBody(cs *CacheServer, logger *log.Logger, q string) []byte {
 			logger.Println(err)
 		}
 
-		cs.cache.TMPSaveBody(q, b)
+		err = cs.cache.TMPSaveBody(q, b)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	body, err := cs.cache.GetBodyByURL(q)
 	if err != nil {
