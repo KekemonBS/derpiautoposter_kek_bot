@@ -253,7 +253,8 @@ func checkSearchType(c tele.Context) int {
 	}
 
 	u, err := url.Parse(c.Query().Text)
-	if !(err == nil && u.Scheme != "" && u.Host != "") {
+	//if !(err == nil && u.Scheme != "" && u.Host != "") {
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return search
 	}
 
